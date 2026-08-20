@@ -18,7 +18,6 @@
       padding: 10px;
     }
 
-    /* LED Board Container */
     .led-frame {
       background: #000;
       border: 6px solid #111;
@@ -30,7 +29,6 @@
       position: relative;
     }
 
-    /* Dot Matrix Overlay Effect */
     .led-frame::after {
       content: "";
       position: absolute;
@@ -41,7 +39,6 @@
       border-radius: 6px;
     }
 
-    /* Top Grid Layout */
     .top-panel {
       display: grid;
       grid-template-columns: 100px 1fr;
@@ -49,7 +46,6 @@
       margin-bottom: 15px;
     }
 
-    /* Pixel Art Logo Canvas */
     #logoCanvas {
       width: 100px;
       height: 100px;
@@ -59,7 +55,6 @@
       box-shadow: 0 0 10px rgba(0, 85, 255, 0.5);
     }
 
-    /* Right Side Text Layout */
     .flight-info {
       display: flex;
       flex-direction: column;
@@ -86,7 +81,6 @@
       text-shadow: 0 0 8px #00ff66;
     }
 
-    /* Bottom Lines */
     .telemetry-row {
       font-size: 1.8rem;
       color: #00e5ff;
@@ -111,7 +105,7 @@
 
     .status {
       font-size: 1.1rem;
-      color: #333;
+      color: #888;
       text-align: right;
       margin-top: 5px;
     }
@@ -133,7 +127,7 @@
       Alt:<span id="alt">--</span>ft,Spd:<span id="speed">--</span>mph
     </div>
     <div class="telemetry-row">
-      Trk:<span id="track">--</span>deg,Dist:<span id="dist">--</span>km
+      Trk:<span id="track">--</span>deg,Dist:<span id="dist">--</span>nm
     </div>
 
     <button class="btn-scan" onclick="fetchFlightData()">SCAN AIRSPACE</button>
@@ -141,11 +135,9 @@
   </div>
 
   <script>
-    // -------------------------------------------------------------
-    // INPUT YOUR LATITUDE AND LONGITUDE HERE (e.g. from Google Maps)
-    // -------------------------------------------------------------
-    const MY_LAT = 50.1096; 
-    const MY_LON = 18.9572;
+    // Set your Latitude and Longitude here
+    const MY_LAT = 50.0125; 
+    const MY_LON = 18.9884;
 
     function drawLedLogo() {
       const canvas = document.getElementById('logoCanvas');
@@ -157,7 +149,6 @@
       ctx.shadowColor = '#0055ff';
       ctx.shadowBlur = 8;
 
-      // Draw Globe / Grid Pattern
       for(let y = 15; y < 85; y += 8) {
         for(let x = 15; x < 85; x += 8) {
           if (Math.hypot(x - 50, y - 50) < 35) {
@@ -168,7 +159,6 @@
         }
       }
 
-      // Overlay Aircraft Wings
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.moveTo(50, 30);
@@ -179,67 +169,51 @@
       ctx.fill();
     }
 
-    function getDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
     async function fetchFlightData() {
       document.getElementById('status').innerText = "FETCHING ADS-B...";
       drawLedLogo();
 
+      // Using /v2/closest with a 150 nautical mile search radius via CORS proxy
+      const targetApi = `https://api.adsb.lol/v2/closest/${MY_LAT}/${MY_LON}/150`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetApi)}`;
+
       try {
-        // Direct query to adsb.lol with exact radius (in km) around your coordinates
-        const apiRes = await fetch(`https://api.adsb.lol/v2/lat/${MY_LAT}/lon/${MY_LON}/dist/150`);
-        const data = await apiRes.json();
+        const res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error("API HTTP Error " + res.status);
+        const data = await res.json();
 
         if (!data.ac || data.ac.length === 0) {
           document.getElementById('airline').innerText = "NO TARGETS";
           document.getElementById('callsign').innerText = "NONE";
+          document.getElementById('aircraft').innerText = "----";
           document.getElementById('status').innerText = "CLEAR SKY";
           return;
         }
 
-        let nearest = null;
-        let minDist = Infinity;
+        const nearest = data.ac[0];
+        const callsign = (nearest.flight || "UNKNOWN").trim();
+        const altFt = nearest.alt_baro || nearest.alt_geom || 0;
+        const spdMph = Math.round((nearest.gs || 0) * 1.15078);
+        const track = Math.round(nearest.track || 0);
+        const type = nearest.t || "AIRCRAFT";
+        const distNm = nearest.r || 0;
 
-        data.ac.forEach(plane => {
-          if (plane.lat && plane.lon) {
-            const d = getDistance(MY_LAT, MY_LON, plane.lat, plane.lon);
-            if (d < minDist) {
-              minDist = d;
-              nearest = plane;
-            }
-          }
-        });
+        document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
+        document.getElementById('callsign').innerText = callsign;
+        document.getElementById('aircraft').innerText = type;
+        document.getElementById('alt').innerText = typeof altFt === 'number' ? (altFt/1000).toFixed(1) + "k" : altFt;
+        document.getElementById('speed').innerText = spdMph;
+        document.getElementById('dist').innerText = typeof distNm === 'number' ? distNm.toFixed(1) : distNm;
+        document.getElementById('track').innerText = track;
+        document.getElementById('status').innerText = "LIVE DATA";
 
-        if (nearest) {
-          const callsign = (nearest.flight || "UNKNOWN").trim();
-          const altFt = nearest.alt_baro || nearest.alt_geom || 0;
-          const spdMph = Math.round((nearest.gs || 0) * 1.15078);
-          const track = Math.round(nearest.track || 0);
-          const type = nearest.t || "AIRCRAFT";
-
-          document.getElementById('airline').innerText = callsign.slice(0, 3) + " AIR";
-          document.getElementById('callsign').innerText = callsign;
-          document.getElementById('aircraft').innerText = type;
-          document.getElementById('alt').innerText = (altFt/1000).toFixed(1) + "k";
-          document.getElementById('speed').innerText = spdMph;
-          document.getElementById('dist').innerText = minDist.toFixed(1);
-          document.getElementById('track').innerText = track;
-          document.getElementById('status').innerText = "LIVE DATA";
-        }
       } catch (err) {
-        document.getElementById('status').innerText = "RETRYING...";
+        console.error(err);
+        document.getElementById('status').innerText = "RETRYING IN 5s...";
+        setTimeout(fetchFlightData, 5000);
       }
     }
 
-    // Auto load on start
     fetchFlightData();
   </script>
 </body>

@@ -36,14 +36,16 @@
     button {
       margin-top: 20px; background: #238636; color: white; border: none;
       padding: 12px 24px; font-size: 1rem; border-radius: 8px; cursor: pointer; font-weight: 600;
+      width: 100%;
     }
+    button:hover { background: #2ea043; }
   </style>
 </head>
 <body>
 
   <div class="card">
     <div class="label">Nearest Overhead Aircraft</div>
-    <div class="callsign" id="callsign">LOCATING...</div>
+    <div class="callsign" id="callsign">READY</div>
 
     <div class="stat-grid">
       <div class="stat-box">
@@ -65,24 +67,40 @@
     </div>
 
     <button onclick="getLocation()">Scan Overhead</button>
-    <div class="status" id="status">Tap scan to fetch live GPS data</div>
+    <div class="status" id="status">Tap scan to fetch live flight data</div>
   </div>
 
   <script>
+    // Fallback coordinates (Change if location access is blocked)
+    const DEFAULT_LAT = 50.1109; 
+    const DEFAULT_LON = 8.6821;
+
     function getLocation() {
-      document.getElementById('status').innerText = "Getting iPad GPS...";
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(fetchNearestFlight, handleError);
-      } else {
-        document.getElementById('status').innerText = "Geolocation not supported";
+      document.getElementById('status').innerText = "Requesting location...";
+
+      if (!navigator.geolocation) {
+        useFallbackLocation("Geolocation not supported");
+        return;
       }
+
+      const options = {
+        enableHighAccuracy: false,
+        timeout: 4000,
+        maximumAge: 60000
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fetchNearestFlight(pos.coords.latitude, pos.coords.longitude),
+        (err) => useFallbackLocation("GPS timed out - using backup location"),
+        options
+      );
     }
 
-    function handleError(error) {
-      document.getElementById('status').innerText = "GPS Error: " + error.message;
+    function useFallbackLocation(reason) {
+      document.getElementById('status').innerText = reason;
+      fetchNearestFlight(DEFAULT_LAT, DEFAULT_LON);
     }
 
-    // Haversine formula to calculate distance in Kilometers
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -93,22 +111,21 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function fetchNearestFlight(position) {
-      const userLat = position.coords.latitude;
-      const userLon = position.coords.longitude;
-      document.getElementById('status').innerText = "Scanning sky...";
+    async function fetchNearestFlight(userLat, userLon) {
+      document.getElementById('status').innerText = "Scanning airspace...";
 
-      // Define a ~100km bounding box around user position
-      const delta = 1.0;
-      const url = `https://opensky-network.org/api/states/all?lamin=${userLat - delta}&lamax=${userLat + delta}&lomin=${userLon - delta}&lomax=${userLon + delta}`;
+      const delta = 1.5; 
+      const targetUrl = `https://opensky-network.org/api/states/all?lamin=${userLat - delta}&lamax=${userLat + delta}&lomin=${userLon - delta}&lomax=${userLon + delta}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
 
       try {
-        const res = await fetch(url);
+        const res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error("API Server Error");
         const data = await res.json();
 
         if (!data.states || data.states.length === 0) {
           document.getElementById('callsign').innerText = "NONE NEARBY";
-          document.getElementById('status').innerText = "No flights in range right now.";
+          document.getElementById('status').innerText = "No flights overhead right now.";
           return;
         }
 
@@ -131,8 +148,7 @@
           const callsign = nearestPlane[1].trim() || "UNKNOWN";
           const altitudeMeters = nearestPlane[7] || nearestPlane[13] || 0;
           const velocityMs = nearestPlane[9] || 0;
-          
-          // Conversions
+
           const flightLevel = Math.round((altitudeMeters * 3.28084) / 100);
           const speedKnots = Math.round(velocityMs * 1.94384);
 
@@ -144,7 +160,7 @@
           document.getElementById('status').innerText = "Updated just now";
         }
       } catch (err) {
-        document.getElementById('status').innerText = "API Error / Rate limit hit";
+        document.getElementById('status').innerText = "Error fetching data. Retry in a few seconds.";
       }
     }
   </script>

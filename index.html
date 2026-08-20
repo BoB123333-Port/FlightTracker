@@ -205,15 +205,27 @@
       logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      const apiUrl = `https://api.airplanes.live/v2/point/${MY_LAT}/${MY_LON}/100`;
+      const targetUrl = `https://api.airplanes.live/v2/point/${MY_LAT}/${MY_LON}/100`;
+      
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${targetUrl}`
+      ];
+
+      let res = null;
+
+      for (const proxy of proxies) {
+        try {
+          logDebug(`Trying Proxy: ${proxy.split('/')[2]}...`, "info");
+          res = await fetch(proxy);
+          if (res.ok) break;
+        } catch (e) {
+          logDebug(`Proxy failed, switching...`, "err");
+        }
+      }
 
       try {
-        logDebug("Connecting directly to airplanes.live API...", "info");
-        const res = await fetch(apiUrl);
-        
-        logDebug(`HTTP Status: ${res.status}`, res.ok ? 'success' : 'err');
-
-        if (!res.ok) throw new Error(`HTTP_${res.status}_REJECTED`);
+        if (!res || !res.ok) throw new Error("ALL_PROXIES_FAILED");
 
         const data = await res.json();
         logDebug("JSON Parsed Successfully", "success");

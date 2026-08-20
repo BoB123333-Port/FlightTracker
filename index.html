@@ -205,7 +205,6 @@
       logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      // Direct, CORS-friendly API endpoint (100NM radius)
       const apiUrl = `https://api.airplanes.live/v2/point/${MY_LAT}/${MY_LON}/100`;
 
       try {
@@ -228,7 +227,6 @@
           return;
         }
 
-        // Sort by distance to get closest target
         const nearest = data.ac.sort((a, b) => (a.dst || 999) - (b.dst || 999))[0];
         logDebug(`Target Acquired: ${nearest.flight || 'UNKNOWN'}`, "success");
 

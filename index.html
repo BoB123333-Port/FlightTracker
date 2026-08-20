@@ -201,7 +201,7 @@
     }
 
     function getDistance(lat1, lon1, lat2, lon2) {
-      const R = 3440.065; // Radius of earth in Nautical Miles
+      const R = 3440.065;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -215,13 +215,12 @@
       logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      // Define a bounding box around location (~1 degree radius)
-      const lamin = MY_LAT - 1.0, lamax = MY_LAT + 1.0;
-      const lomin = MY_LON - 1.0, lomax = MY_LON + 1.0;
+      const lamin = MY_LAT - 0.8, lamax = MY_LAT + 0.8;
+      const lomin = MY_LON - 0.8, lomax = MY_LON + 0.8;
       const apiUrl = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
 
       try {
-        logDebug("Connecting to OpenSky Network...", "info");
+        logDebug("Connecting directly to OpenSky...", "info");
         const res = await fetch(apiUrl);
         
         logDebug(`HTTP Status: ${res.status}`, res.ok ? 'success' : 'err');
@@ -230,7 +229,7 @@
         const data = await res.json();
         
         if (!data.states || data.states.length === 0) {
-          logDebug("0 Aircraft found in bounding box", "err");
+          logDebug("0 Aircraft found overhead", "err");
           document.getElementById('airline').innerText = "NO TARGETS";
           document.getElementById('callsign').innerText = "NONE";
           document.getElementById('aircraft').innerText = "----";
@@ -238,7 +237,6 @@
           return;
         }
 
-        // Map states array to parsed objects and calculate distance
         const planes = data.states.map(s => {
           const lat = s[6], lon = s[5];
           const dist = (lat && lon) ? getDistance(MY_LAT, MY_LON, lat, lon) : 999;

@@ -200,71 +200,77 @@
       ctx.fill();
     }
 
-    // Global callback handler for JSONP to bypass CORS completely
-    window.handleFlightResponse = function(data) {
-      logDebug("JSONP Payload Received!", "success");
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 3440.065; // Radius of earth in Nautical Miles
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
 
-      if (!data || !data.ac || data.ac.length === 0) {
-        logDebug("0 Aircraft within 100NM", "err");
-        document.getElementById('airline').innerText = "NO TARGETS";
-        document.getElementById('callsign').innerText = "NONE";
-        document.getElementById('aircraft').innerText = "----";
-        document.getElementById('status').innerText = "CLEAR SKY";
-        return;
-      }
-
-      const nearest = data.ac.sort((a, b) => (a.dst || a.r || 999) - (b.dst || b.r || 999))[0];
-      logDebug(`Target: ${nearest.flight || 'UNKNOWN'}`, "success");
-
-      const callsign = (nearest.flight || "UNKNOWN").trim();
-      const altFt = nearest.alt_baro || nearest.alt_geom || 0;
-      const spdMph = Math.round((nearest.gs || 0) * 1.15078);
-      const track = Math.round(nearest.track || 0);
-      const type = nearest.t || "AIRCRAFT";
-      const distNm = nearest.dst || nearest.r || 0;
-
-      document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
-      document.getElementById('callsign').innerText = callsign;
-      document.getElementById('aircraft').innerText = type;
-      document.getElementById('alt').innerText = typeof altFt === 'number' ? (altFt/1000).toFixed(1) + "k" : altFt;
-      document.getElementById('speed').innerText = spdMph;
-      document.getElementById('dist').innerText = typeof distNm === 'number' ? Number(distNm).toFixed(1) : distNm;
-      document.getElementById('track').innerText = track;
-      document.getElementById('status').innerText = "LIVE DATA";
-    };
-
-    function fetchFlightData() {
-      document.getElementById('status').innerText = "FETCHING ADS-B...";
+    async function fetchFlightData() {
+      document.getElementById('status').innerText = "FETCHING OPENSKY...";
       logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      // Remove previous JSONP script tags if they exist
-      const existingScript = document.getElementById('jsonpScript');
-      if (existingScript) existingScript.remove();
+      // Define a bounding box around location (~1 degree radius)
+      const lamin = MY_LAT - 1.0, lamax = MY_LAT + 1.0;
+      const lomin = MY_LON - 1.0, lomax = MY_LON + 1.0;
+      const apiUrl = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
 
-      // Use JSONP wrapper via api.allorigins.win
-      const targetApi = `https://api.airplanes.live/v2/point/${MY_LAT}/${MY_LON}/100`;
-      const jsonpUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetApi)}&callback=handleAllOriginsData`;
+      try {
+        logDebug("Connecting to OpenSky Network...", "info");
+        const res = await fetch(apiUrl);
+        
+        logDebug(`HTTP Status: ${res.status}`, res.ok ? 'success' : 'err');
+        if (!res.ok) throw new Error(`HTTP_${res.status}`);
 
-      window.handleAllOriginsData = function(response) {
-        try {
-          const parsedData = JSON.parse(response.contents);
-          window.handleFlightResponse(parsedData);
-        } catch (e) {
-          logDebug("Failed to parse inner payload", "err");
-          document.getElementById('status').innerText = "ERROR";
+        const data = await res.json();
+        
+        if (!data.states || data.states.length === 0) {
+          logDebug("0 Aircraft found in bounding box", "err");
+          document.getElementById('airline').innerText = "NO TARGETS";
+          document.getElementById('callsign').innerText = "NONE";
+          document.getElementById('aircraft').innerText = "----";
+          document.getElementById('status').innerText = "CLEAR SKY";
+          return;
         }
-      };
 
-      logDebug("Injecting JSONP Script tag...", "info");
-      const script = document.createElement('script');
-      script.id = 'jsonpScript';
-      script.src = jsonpUrl;
-      script.onerror = function() {
-        logDebug("JSONP Script load failed", "err");
+        // Map states array to parsed objects and calculate distance
+        const planes = data.states.map(s => {
+          const lat = s[6], lon = s[5];
+          const dist = (lat && lon) ? getDistance(MY_LAT, MY_LON, lat, lon) : 999;
+          return {
+            callsign: (s[1] || "UNKNOWN").trim(),
+            altMeters: s[7] || s[13] || 0,
+            velocityMps: s[9] || 0,
+            track: Math.round(s[10] || 0),
+            distNm: dist
+          };
+        }).sort((a, b) => a.distNm - b.distNm);
+
+        const nearest = planes[0];
+        logDebug(`Target Acquired: ${nearest.callsign || 'UNKNOWN'}`, "success");
+
+        const callsign = nearest.callsign || "UNKNOWN";
+        const altFt = Math.round(nearest.altMeters * 3.28084);
+        const spdMph = Math.round(nearest.velocityMps * 2.23694);
+
+        document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
+        document.getElementById('callsign').innerText = callsign;
+        document.getElementById('aircraft').innerText = "ADS-B";
+        document.getElementById('alt').innerText = (altFt / 1000).toFixed(1) + "k";
+        document.getElementById('speed').innerText = spdMph;
+        document.getElementById('dist').innerText = nearest.distNm.toFixed(1);
+        document.getElementById('track').innerText = nearest.track;
+        document.getElementById('status').innerText = "LIVE DATA";
+
+      } catch (err) {
+        logDebug(`ERR: ${err.message}`, "err");
         document.getElementById('status').innerText = "ERROR";
-      };
-      document.body.appendChild(script);
+      }
     }
 
     fetchFlightData();

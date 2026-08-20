@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LED Aircraft Display</title>
+  <title>LED Aircraft Display with Debug Console</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
@@ -24,7 +24,7 @@
       border-radius: 10px;
       padding: 20px;
       width: 100%;
-      max-width: 600px;
+      max-width: 650px;
       box-shadow: 0 0 40px rgba(0, 102, 255, 0.2);
       position: relative;
     }
@@ -89,6 +89,25 @@
       padding-top: 8px;
     }
 
+    /* Dedicated LED Debug Console Box */
+    .debug-console {
+      margin-top: 15px;
+      background: #080808;
+      border: 1px dashed #0055ff;
+      padding: 10px;
+      font-size: 1.1rem;
+      color: #ff3333;
+      height: 110px;
+      overflow-y: auto;
+      border-radius: 4px;
+      line-height: 1.2;
+    }
+
+    .debug-line { margin-bottom: 3px; }
+    .debug-info { color: #00e5ff; }
+    .debug-success { color: #00ff66; }
+    .debug-err { color: #ff3333; }
+
     .btn-scan {
       margin-top: 15px;
       background: #0055ff;
@@ -130,14 +149,29 @@
       Trk:<span id="track">--</span>deg,Dist:<span id="dist">--</span>nm
     </div>
 
+    <!-- Live On-Screen Debugger -->
+    <div class="debug-console" id="debugConsole">
+      <div class="debug-line debug-info">[SYS] Debug Console Ready...</div>
+    </div>
+
     <button class="btn-scan" onclick="fetchFlightData()">SCAN AIRSPACE</button>
     <div class="status" id="status">INIT</div>
   </div>
 
   <script>
-    // Set your Latitude and Longitude here
+    // Latitude and Longitude Coordinates
     const MY_LAT = 50.0125; 
     const MY_LON = 18.9884;
+
+    function logDebug(msg, type = 'info') {
+      const consoleEl = document.getElementById('debugConsole');
+      const time = new Date().toISOString().split('T')[1].slice(0,8);
+      const line = document.createElement('div');
+      line.className = `debug-line debug-${type}`;
+      line.innerText = `[${time}] ${msg}`;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
 
     function drawLedLogo() {
       const canvas = document.getElementById('logoCanvas');
@@ -171,18 +205,56 @@
 
     async function fetchFlightData() {
       document.getElementById('status').innerText = "FETCHING ADS-B...";
+      logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      // Using /v2/closest with a 150 nautical mile search radius via CORS proxy
+      // Check Coordinate Validity
+      if (!MY_LAT || !MY_LON || isNaN(MY_LAT) || isNaN(MY_LON)) {
+        logDebug("ERR: Invalid Lat/Lon values defined in code", "err");
+        document.getElementById('status').innerText = "CONFIG ERR";
+        return;
+      }
+
       const targetApi = `https://api.adsb.lol/v2/closest/${MY_LAT}/${MY_LON}/150`;
       const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetApi)}`;
 
-      try {
-        const res = await fetch(proxyUrl);
-        if (!res.ok) throw new Error("API HTTP Error " + res.status);
-        const data = await res.json();
+      logDebug("Contacting Proxy: api.allorigins.win...", "info");
 
-        if (!data.ac || data.ac.length === 0) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        logDebug(`HTTP Response Status: ${res.status} ${res.statusText}`, res.ok ? 'success' : 'err');
+
+        if (!res.ok) {
+          throw new Error(`HTTP_${res.status}_SERVER_REJECTED`);
+        }
+
+        const textData = await res.text();
+        if (!textData || textData.trim() === "") {
+          throw new Error("EMPTY_RESPONSE_PAYLOAD");
+        }
+
+        let data;
+        try {
+          data = JSON.parse(textData);
+          logDebug("JSON Payload Parsed Successfully", "success");
+        } catch (jsonErr) {
+          throw new Error("JSON_PARSING_FAILED: " + jsonErr.message);
+        }
+
+        if (!data.ac) {
+          logDebug("ERR: Key 'ac' missing in API payload", "err");
+          throw new Error("MALFORMED_ADS_B_SCHEMA");
+        }
+
+        logDebug(`Aircraft Array Length: ${data.ac.length}`, "info");
+
+        if (data.ac.length === 0) {
+          logDebug("WARN: 0 Aircraft returned within 150NM radius", "err");
           document.getElementById('airline').innerText = "NO TARGETS";
           document.getElementById('callsign').innerText = "NONE";
           document.getElementById('aircraft').innerText = "----";
@@ -191,6 +263,8 @@
         }
 
         const nearest = data.ac[0];
+        logDebug(`Target Acquired: ICAO ${nearest.hex || 'UNK'}`, "success");
+
         const callsign = (nearest.flight || "UNKNOWN").trim();
         const altFt = nearest.alt_baro || nearest.alt_geom || 0;
         const spdMph = Math.round((nearest.gs || 0) * 1.15078);
@@ -207,10 +281,15 @@
         document.getElementById('track').innerText = track;
         document.getElementById('status').innerText = "LIVE DATA";
 
+        logDebug(`Display Updated: ${callsign} @ ${distNm}NM`, "success");
+
       } catch (err) {
-        console.error(err);
-        document.getElementById('status').innerText = "RETRYING IN 5s...";
-        setTimeout(fetchFlightData, 5000);
+        if (err.name === 'AbortError') {
+          logDebug("ERR: API Request Timed Out (>8s)", "err");
+        } else {
+          logDebug(`ERR: ${err.message}`, "err");
+        }
+        document.getElementById('status').innerText = "ERROR";
       }
     }
 

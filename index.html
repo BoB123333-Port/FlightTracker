@@ -205,14 +205,14 @@
       logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
       drawLedLogo();
 
-      const targetApi = `https://api.adsb.lol/v2/closest/${MY_LAT}/${MY_LON}/150`;
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetApi)}`;
+      // Direct, CORS-friendly API endpoint (100NM radius)
+      const apiUrl = `https://api.airplanes.live/v2/point/${MY_LAT}/${MY_LON}/100`;
 
       try {
-        logDebug("Contacting Proxy (corsproxy.io)...", "info");
-        const res = await fetch(proxyUrl);
+        logDebug("Connecting directly to airplanes.live API...", "info");
+        const res = await fetch(apiUrl);
         
-        logDebug(`HTTP Response: ${res.status}`, res.ok ? 'success' : 'err');
+        logDebug(`HTTP Status: ${res.status}`, res.ok ? 'success' : 'err');
 
         if (!res.ok) throw new Error(`HTTP_${res.status}_REJECTED`);
 
@@ -220,7 +220,7 @@
         logDebug("JSON Parsed Successfully", "success");
 
         if (!data.ac || data.ac.length === 0) {
-          logDebug("0 Aircraft within 150NM", "err");
+          logDebug("0 Aircraft within 100NM", "err");
           document.getElementById('airline').innerText = "NO TARGETS";
           document.getElementById('callsign').innerText = "NONE";
           document.getElementById('aircraft').innerText = "----";
@@ -228,7 +228,8 @@
           return;
         }
 
-        const nearest = data.ac[0];
+        // Sort by distance to get closest target
+        const nearest = data.ac.sort((a, b) => (a.dst || 999) - (b.dst || 999))[0];
         logDebug(`Target Acquired: ${nearest.flight || 'UNKNOWN'}`, "success");
 
         const callsign = (nearest.flight || "UNKNOWN").trim();
@@ -236,7 +237,7 @@
         const spdMph = Math.round((nearest.gs || 0) * 1.15078);
         const track = Math.round(nearest.track || 0);
         const type = nearest.t || "AIRCRAFT";
-        const distNm = nearest.r || 0;
+        const distNm = nearest.dst || 0;
 
         document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
         document.getElementById('callsign').innerText = callsign;

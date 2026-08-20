@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nearest Flight Radar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 16px;
+      padding: 30px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    .label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .callsign { font-size: 2.5rem; font-weight: 800; color: #58a6ff; margin: 10px 0 20px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left; }
+    .stat-box { background: #21262d; padding: 12px; border-radius: 8px; }
+    .stat-val { font-size: 1.2rem; font-weight: 600; color: #f0f6fc; margin-top: 4px; }
+    .status { margin-top: 20px; font-size: 0.85rem; color: #8b949e; }
+    button {
+      margin-top: 20px; background: #238636; color: white; border: none;
+      padding: 12px 24px; font-size: 1rem; border-radius: 8px; cursor: pointer; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="label">Nearest Overhead Aircraft</div>
+    <div class="callsign" id="callsign">LOCATING...</div>
+
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="label">Flight Level</div>
+        <div class="stat-val" id="altitude">--</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Speed</div>
+        <div class="stat-val" id="speed">--</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Distance</div>
+        <div class="stat-val" id="distance">--</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">ICAO Code</div>
+        <div class="stat-val" id="icao">--</div>
+      </div>
+    </div>
+
+    <button onclick="getLocation()">Scan Overhead</button>
+    <div class="status" id="status">Tap scan to fetch live GPS data</div>
+  </div>
+
+  <script>
+    function getLocation() {
+      document.getElementById('status').innerText = "Getting iPad GPS...";
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(fetchNearestFlight, handleError);
+      } else {
+        document.getElementById('status').innerText = "Geolocation not supported";
+      }
+    }
+
+    function handleError(error) {
+      document.getElementById('status').innerText = "GPS Error: " + error.message;
+    }
+
+    // Haversine formula to calculate distance in Kilometers
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    async function fetchNearestFlight(position) {
+      const userLat = position.coords.latitude;
+      const userLon = position.coords.longitude;
+      document.getElementById('status').innerText = "Scanning sky...";
+
+      // Define a ~100km bounding box around user position
+      const delta = 1.0;
+      const url = `https://opensky-network.org/api/states/all?lamin=${userLat - delta}&lamax=${userLat + delta}&lomin=${userLon - delta}&lomax=${userLon + delta}`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!data.states || data.states.length === 0) {
+          document.getElementById('callsign').innerText = "NONE NEARBY";
+          document.getElementById('status').innerText = "No flights in range right now.";
+          return;
+        }
+
+        let nearestPlane = null;
+        let minDistance = Infinity;
+
+        data.states.forEach(plane => {
+          const planeLon = plane[5];
+          const planeLat = plane[6];
+          if (planeLat && planeLon) {
+            const dist = getDistance(userLat, userLon, planeLat, planeLon);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestPlane = plane;
+            }
+          }
+        });
+
+        if (nearestPlane) {
+          const callsign = nearestPlane[1].trim() || "UNKNOWN";
+          const altitudeMeters = nearestPlane[7] || nearestPlane[13] || 0;
+          const velocityMs = nearestPlane[9] || 0;
+          
+          // Conversions
+          const flightLevel = Math.round((altitudeMeters * 3.28084) / 100);
+          const speedKnots = Math.round(velocityMs * 1.94384);
+
+          document.getElementById('callsign').innerText = callsign;
+          document.getElementById('altitude').innerText = `FL${flightLevel}`;
+          document.getElementById('speed').innerText = `${speedKnots} kts`;
+          document.getElementById('distance').innerText = `${minDistance.toFixed(1)} km`;
+          document.getElementById('icao').innerText = nearestPlane[0].toUpperCase();
+          document.getElementById('status').innerText = "Updated just now";
+        }
+      } catch (err) {
+        document.getElementById('status').innerText = "API Error / Rate limit hit";
+      }
+    }
+  </script>
+</body>
+</html>

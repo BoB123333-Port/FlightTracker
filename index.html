@@ -89,7 +89,6 @@
       padding-top: 8px;
     }
 
-    /* Dedicated LED Debug Console Box */
     .debug-console {
       margin-top: 15px;
       background: #080808;
@@ -149,7 +148,6 @@
       Trk:<span id="track">--</span>deg,Dist:<span id="dist">--</span>nm
     </div>
 
-    <!-- Live On-Screen Debugger -->
     <div class="debug-console" id="debugConsole">
       <div class="debug-line debug-info">[SYS] Debug Console Ready...</div>
     </div>
@@ -159,7 +157,6 @@
   </div>
 
   <script>
-    // Latitude and Longitude Coordinates
     const MY_LAT = 50.0125; 
     const MY_LON = 18.9884;
 
@@ -204,66 +201,66 @@
     }
 
     async function fetchFlightData() {
-  document.getElementById('status').innerText = "FETCHING ADS-B...";
-  logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
-  drawLedLogo();
+      document.getElementById('status').innerText = "FETCHING ADS-B...";
+      logDebug(`INIT SCAN @ LAT: ${MY_LAT}, LON: ${MY_LON}`, 'info');
+      drawLedLogo();
 
-  // Primary API Endpoint
-  const targetApi = `https://api.adsb.lol/v2/closest/${MY_LAT}/${MY_LON}/150`;
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetApi)}`;
+      const targetApi = `https://api.adsb.lol/v2/closest/${MY_LAT}/${MY_LON}/150`;
 
-  logDebug("Contacting Proxy: corsproxy.io...", "info");
+      // Try DIRECT fetch first (no proxy)
+      try {
+        logDebug("Attempting Direct API call...", "info");
+        let res = await fetch(targetApi);
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+        // Fallback to corsproxy.io if direct fails
+        if (!res.ok) {
+          logDebug(`Direct failed (${res.status}). Trying corsproxy.io...`, "err");
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetApi)}`;
+          res = await fetch(proxyUrl);
+        }
 
-    const res = await fetch(proxyUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
+        logDebug(`HTTP Response: ${res.status}`, res.ok ? 'success' : 'err');
 
-    logDebug(`HTTP Response Status: ${res.status} ${res.statusText}`, res.ok ? 'success' : 'err');
+        if (!res.ok) throw new Error(`HTTP_${res.status}_REJECTED`);
 
-    if (!res.ok) throw new Error(`HTTP_${res.status}_PROXY_REJECTED`);
+        const data = await res.json();
+        logDebug("JSON Parsed Successfully", "success");
 
-    const data = await res.json();
-    logDebug("JSON Payload Parsed Successfully", "success");
+        if (!data.ac || data.ac.length === 0) {
+          logDebug("0 Aircraft within 150NM", "err");
+          document.getElementById('airline').innerText = "NO TARGETS";
+          document.getElementById('callsign').innerText = "NONE";
+          document.getElementById('aircraft').innerText = "----";
+          document.getElementById('status').innerText = "CLEAR SKY";
+          return;
+        }
 
-    if (!data.ac) throw new Error("MALFORMED_ADS_B_SCHEMA");
+        const nearest = data.ac[0];
+        logDebug(`Target: ${nearest.flight || 'UNKNOWN'}`, "success");
 
-    logDebug(`Aircraft Array Length: ${data.ac.length}`, "info");
+        const callsign = (nearest.flight || "UNKNOWN").trim();
+        const altFt = nearest.alt_baro || nearest.alt_geom || 0;
+        const spdMph = Math.round((nearest.gs || 0) * 1.15078);
+        const track = Math.round(nearest.track || 0);
+        const type = nearest.t || "AIRCRAFT";
+        const distNm = nearest.r || 0;
 
-    if (data.ac.length === 0) {
-      logDebug("WARN: 0 Aircraft returned within 150NM radius", "err");
-      document.getElementById('airline').innerText = "NO TARGETS";
-      document.getElementById('callsign').innerText = "NONE";
-      document.getElementById('aircraft').innerText = "----";
-      document.getElementById('status').innerText = "CLEAR SKY";
-      return;
+        document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
+        document.getElementById('callsign').innerText = callsign;
+        document.getElementById('aircraft').innerText = type;
+        document.getElementById('alt').innerText = typeof altFt === 'number' ? (altFt/1000).toFixed(1) + "k" : altFt;
+        document.getElementById('speed').innerText = spdMph;
+        document.getElementById('dist').innerText = typeof distNm === 'number' ? distNm.toFixed(1) : distNm;
+        document.getElementById('track').innerText = track;
+        document.getElementById('status').innerText = "LIVE DATA";
+
+      } catch (err) {
+        logDebug(`ERR: ${err.message}`, "err");
+        document.getElementById('status').innerText = "ERROR";
+      }
     }
 
-    const nearest = data.ac[0];
-    logDebug(`Target Acquired: ICAO ${nearest.hex || 'UNK'}`, "success");
-
-    const callsign = (nearest.flight || "UNKNOWN").trim();
-    const altFt = nearest.alt_baro || nearest.alt_geom || 0;
-    const spdMph = Math.round((nearest.gs || 0) * 1.15078);
-    const track = Math.round(nearest.track || 0);
-    const type = nearest.t || "AIRCRAFT";
-    const distNm = nearest.r || 0;
-
-    document.getElementById('airline').innerText = callsign.length >= 3 ? callsign.slice(0, 3) + " AIR" : "AIRCRAFT";
-    document.getElementById('callsign').innerText = callsign;
-    document.getElementById('aircraft').innerText = type;
-    document.getElementById('alt').innerText = typeof altFt === 'number' ? (altFt/1000).toFixed(1) + "k" : altFt;
-    document.getElementById('speed').innerText = spdMph;
-    document.getElementById('dist').innerText = typeof distNm === 'number' ? distNm.toFixed(1) : distNm;
-    document.getElementById('track').innerText = track;
-    document.getElementById('status').innerText = "LIVE DATA";
-
-    logDebug(`Display Updated: ${callsign} @ ${distNm}NM`, "success");
-
-  } catch (err) {
-    logDebug(`ERR: ${err.message}`, "err");
-    document.getElementById('status').innerText = "ERROR";
-  }
-}
+    fetchFlightData();
+  </script>
+</body>
+</html>

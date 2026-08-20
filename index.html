@@ -3,90 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LED Flight Tracker</title>
+  <title>LED Aircraft Display</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background-color: #050505;
-      color: #00ff66;
+      background-color: #030303;
       font-family: 'VT323', monospace;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      padding: 15px;
+      padding: 10px;
     }
 
-    /* LED Matrix Outer Frame */
-    .led-board {
-      background: #000000;
-      border: 4px solid #1a1a1a;
-      border-radius: 12px;
-      padding: 24px;
+    /* LED Board Container */
+    .led-frame {
+      background: #000;
+      border: 6px solid #111;
+      border-radius: 10px;
+      padding: 20px;
       width: 100%;
-      max-width: 650px;
-      box-shadow: 0 0 30px rgba(0, 255, 102, 0.15), inset 0 0 15px rgba(0,0,0,0.9);
+      max-width: 600px;
+      box-shadow: 0 0 40px rgba(0, 102, 255, 0.2);
       position: relative;
     }
 
-    /* Pixel Grid Effect */
-    .led-board::before {
+    /* Dot Matrix Overlay Effect */
+    .led-frame::after {
       content: "";
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: radial-gradient(rgba(0, 0, 0, 0.75) 50%, transparent 51%);
-      background-size: 4px 4px;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(rgba(0, 0, 0, 0.7) 40%, transparent 41%);
+      background-size: 3px 3px;
       pointer-events: none;
-      border-radius: 8px;
-    }
-
-    /* Top Section: Logo + Main Text */
-    .top-row {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    /* Big Left Airline Logo Box */
-    .logo-box {
-      width: 110px;
-      height: 110px;
-      background: #050505;
-      border: 2px solid #0055ff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       border-radius: 6px;
-      flex-shrink: 0;
     }
 
-    .logo-box img {
-      max-width: 90%;
-      max-height: 90%;
-      object-fit: contain;
-      filter: drop-shadow(0 0 5px #0055ff);
+    /* Top Grid Layout */
+    .top-panel {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
     }
 
-    .main-info {
+    /* Pixel Art Logo Canvas */
+    #logoCanvas {
+      width: 100px;
+      height: 100px;
+      background: #000;
+      border: 2px solid #0055ff;
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(0, 85, 255, 0.5);
+    }
+
+    /* Right Side Text Layout */
+    .flight-info {
       display: flex;
       flex-direction: column;
       justify-content: center;
-      line-height: 1.1;
     }
 
-    .airline-name {
+    .airline {
       font-size: 2.2rem;
-      color: #ffffff;
-      text-shadow: 0 0 8px #ffffff;
-    }
-
-    .route {
-      font-size: 2rem;
       color: #0088ff;
       text-shadow: 0 0 8px #0088ff;
+      letter-spacing: 1px;
+    }
+
+    .callsign {
+      font-size: 2.5rem;
+      color: #ffffff;
+      text-shadow: 0 0 10px #ffffff;
+      line-height: 0.9;
     }
 
     .aircraft {
@@ -95,77 +86,92 @@
       text-shadow: 0 0 8px #00ff66;
     }
 
-    /* Bottom Section: Telemetry Lines */
-    .telemetry {
-      font-size: 1.6rem;
+    /* Bottom Lines */
+    .telemetry-row {
+      font-size: 1.8rem;
       color: #00e5ff;
-      text-shadow: 0 0 6px #00e5ff;
-      border-top: 1px dashed #222;
-      padding-top: 15px;
-      line-height: 1.4;
+      text-shadow: 0 0 8px #00e5ff;
+      border-top: 1px solid #111;
+      padding-top: 8px;
     }
 
-    .status-bar {
+    .btn-scan {
       margin-top: 15px;
-      font-size: 1.1rem;
-      color: #444;
-      text-align: right;
-    }
-
-    button {
-      background: #00ff66;
-      color: #000;
-      border: none;
+      background: #0055ff;
+      color: #fff;
       font-family: 'VT323', monospace;
-      font-size: 1.3rem;
-      padding: 6px 16px;
-      cursor: pointer;
-      margin-top: 10px;
+      font-size: 1.4rem;
+      border: none;
+      padding: 8px;
       width: 100%;
+      cursor: pointer;
+      border-radius: 4px;
     }
-    button:hover { background: #00cc55; }
+    .btn-scan:hover { background: #0044cc; }
+
+    .status {
+      font-size: 1.1rem;
+      color: #333;
+      text-align: right;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
 
-  <div class="led-board">
-    <div class="top-row">
-      <div class="logo-box">
-        <img id="logo" src="https://flightaware.com/images/airline_logos/90px/UNK.png" alt="Logo">
-      </div>
-      <div class="main-info">
-        <div class="airline-name" id="airline">SCANNING...</div>
-        <div class="route" id="callsign">----</div>
-        <div class="aircraft" id="icao">ICAO: ----</div>
+  <div class="led-frame">
+    <div class="top-panel">
+      <canvas id="logoCanvas" width="100" height="100"></canvas>
+      <div class="flight-info">
+        <div class="airline" id="airline">SCANNING...</div>
+        <div class="callsign" id="callsign">----</div>
+        <div class="aircraft" id="aircraft">----</div>
       </div>
     </div>
 
-    <div class="telemetry">
-      <div>Alt:<span id="alt">--</span>ft, Spd:<span id="speed">--</span>mph</div>
-      <div>Dist:<span id="dist">--</span>km, Track:<span id="track">--</span>deg</div>
+    <div class="telemetry-row">
+      Alt:<span id="alt">--</span>ft,Spd:<span id="speed">--</span>mph
+    </div>
+    <div class="telemetry-row">
+      Trk:<span id="track">--</span>deg,Dist:<span id="dist">--</span>km
     </div>
 
-    <button onclick="initScan()">RE-SCAN OVERHEAD</button>
-    <div class="status-bar" id="status">INITIALIZING...</div>
+    <button class="btn-scan" onclick="fetchFlightData()">SCAN AIRSPACE</button>
+    <div class="status" id="status">INIT</div>
   </div>
 
   <script>
-    async function initScan() {
-      document.getElementById('status').innerText = "LOCATING IP...";
-      try {
-        // Fast location lookup by IP address to bypass browser hang/permissions
-        const ipRes = await fetch('https://ipapi.co/json/');
-        const ipData = await ipRes.json();
-        
-        if (ipData.latitude && ipData.longitude) {
-          fetchNearestFlight(ipData.latitude, ipData.longitude);
-        } else {
-          // Default fallback (Frankfurt airspace)
-          fetchNearestFlight(50.1109, 8.6821);
+    // Draw LED Matrix Dot Logo
+    function drawLedLogo(code) {
+      const canvas = document.getElementById('logoCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, 100, 100);
+
+      ctx.fillStyle = '#0055ff';
+      ctx.shadowColor = '#0055ff';
+      ctx.shadowBlur = 8;
+
+      // Draw Globe / Grid Pattern
+      for(let y = 15; y < 85; y += 8) {
+        for(let x = 15; x < 85; x += 8) {
+          if (Math.hypot(x - 50, y - 50) < 35) {
+            ctx.beginPath();
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
-      } catch (e) {
-        fetchNearestFlight(50.1109, 8.6821);
       }
+
+      // Overlay Aircraft Wings
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(50, 30);
+      ctx.lineTo(65, 70);
+      ctx.lineTo(50, 60);
+      ctx.lineTo(35, 70);
+      ctx.closePath();
+      ctx.fill();
     }
 
     function getDistance(lat1, lon1, lat2, lon2) {
@@ -178,28 +184,37 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function fetchNearestFlight(lat, lon) {
-      document.getElementById('status').innerText = "FETCHING ADS-B DATA...";
-      const delta = 2.0;
-      const targetUrl = `https://opensky-network.org/api/states/all?lamin=${lat - delta}&lamax=${lat + delta}&lomin=${lon - delta}&lomax=${lon + delta}`;
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    async function fetchFlightData() {
+      document.getElementById('status').innerText = "LOCATING...";
+      drawLedLogo();
 
       try {
-        const res = await fetch(proxyUrl);
-        const data = await res.json();
+        // Step 1: Get IP Location
+        const ipRes = await fetch('https://ipapi.co/json/');
+        const ipData = await ipRes.json();
+        const lat = ipData.latitude || 50.1109;
+        const lon = ipData.longitude || 8.6821;
 
-        if (!data.states || data.states.length === 0) {
+        document.getElementById('status').innerText = "FETCHING ADS-B...";
+
+        // Step 2: Query adsb.lol API within 250km radius
+        const apiRes = await fetch(`https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/250`);
+        const data = await apiRes.json();
+
+        if (!data.ac || data.ac.length === 0) {
           document.getElementById('airline').innerText = "NO TARGETS";
+          document.getElementById('callsign').innerText = "NONE";
           document.getElementById('status').innerText = "CLEAR SKY";
           return;
         }
 
+        // Find nearest aircraft
         let nearest = null;
         let minDist = Infinity;
 
-        data.states.forEach(plane => {
-          if (plane[6] && plane[5]) {
-            const d = getDistance(lat, lon, plane[6], plane[5]);
+        data.ac.forEach(plane => {
+          if (plane.lat && plane.lon) {
+            const d = getDistance(lat, lon, plane.lat, plane.lon);
             if (d < minDist) {
               minDist = d;
               nearest = plane;
@@ -208,34 +223,28 @@
         });
 
         if (nearest) {
-          const callsign = (nearest[1] || "UNK").trim();
-          const icao = nearest[0].toUpperCase();
-          const altFt = Math.round((nearest[7] || 0) * 3.28084);
-          const spdMph = Math.round((nearest[9] || 0) * 2.23694);
-          const track = Math.round(nearest[10] || 0);
+          const callsign = (nearest.flight || "UNKNOWN").trim();
+          const altFt = nearest.alt_baro || nearest.alt_geom || 0;
+          const spdMph = Math.round((nearest.gs || 0) * 1.15078);
+          const track = Math.round(nearest.track || 0);
+          const type = nearest.t || "AIRCRAFT";
 
-          // Extract 3-letter ICAO code for airline logo lookup
-          const airlineIcao = callsign.substring(0, 3);
-
-          document.getElementById('airline').innerText = callsign.length > 3 ? airlineIcao + " FLIGHT" : "AIRCRAFT";
+          document.getElementById('airline').innerText = callsign.slice(0, 3) + " AIR";
           document.getElementById('callsign').innerText = callsign;
-          document.getElementById('icao').innerText = "ICAO: " + icao;
-          document.getElementById('alt').innerText = altFt.toLocaleString();
+          document.getElementById('aircraft').innerText = type;
+          document.getElementById('alt').innerText = (altFt/1000).toFixed(1) + "k";
           document.getElementById('speed').innerText = spdMph;
           document.getElementById('dist').innerText = minDist.toFixed(1);
           document.getElementById('track').innerText = track;
-          
-          // Pull logo directly from FlightAware assets
-          document.getElementById('logo').src = `https://flightaware.com/images/airline_logos/90px/${airlineIcao}.png`;
-          document.getElementById('status').innerText = "SYSTEM LIVE";
+          document.getElementById('status').innerText = "LIVE DATA";
         }
       } catch (err) {
-        document.getElementById('status').innerText = "DATA RETRY NEEDED";
+        document.getElementById('status').innerText = "RETRYING...";
       }
     }
 
-    // Run automatically on page load
-    initScan();
+    // Auto load on start
+    fetchFlightData();
   </script>
 </body>
 </html>

@@ -141,8 +141,13 @@
   </div>
 
   <script>
-    // Draw LED Matrix Dot Logo
-    function drawLedLogo(code) {
+    // -------------------------------------------------------------
+    // INPUT YOUR LATITUDE AND LONGITUDE HERE (e.g. from Google Maps)
+    // -------------------------------------------------------------
+    const MY_LAT = 50.1096; 
+    const MY_LON = 18.9572;
+
+    function drawLedLogo() {
       const canvas = document.getElementById('logoCanvas');
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#000';
@@ -185,20 +190,12 @@
     }
 
     async function fetchFlightData() {
-      document.getElementById('status').innerText = "LOCATING...";
+      document.getElementById('status').innerText = "FETCHING ADS-B...";
       drawLedLogo();
 
       try {
-        // Step 1: Get IP Location
-        const ipRes = await fetch('https://ipapi.co/json/');
-        const ipData = await ipRes.json();
-        const lat = ipData.latitude || 50.1109;
-        const lon = ipData.longitude || 8.6821;
-
-        document.getElementById('status').innerText = "FETCHING ADS-B...";
-
-        // Step 2: Query adsb.lol API within 250km radius
-        const apiRes = await fetch(`https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/250`);
+        // Direct query to adsb.lol with exact radius (in km) around your coordinates
+        const apiRes = await fetch(`https://api.adsb.lol/v2/lat/${MY_LAT}/lon/${MY_LON}/dist/150`);
         const data = await apiRes.json();
 
         if (!data.ac || data.ac.length === 0) {
@@ -208,13 +205,12 @@
           return;
         }
 
-        // Find nearest aircraft
         let nearest = null;
         let minDist = Infinity;
 
         data.ac.forEach(plane => {
           if (plane.lat && plane.lon) {
-            const d = getDistance(lat, lon, plane.lat, plane.lon);
+            const d = getDistance(MY_LAT, MY_LON, plane.lat, plane.lon);
             if (d < minDist) {
               minDist = d;
               nearest = plane;
